@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>ClipForgeWpf</AssemblyName>
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>True</UseWPF><UseWindowsForms>True</UseWindowsForms>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <RootNamespace />
+  </PropertyGroup>
+  <ItemGroup>
+
+    <EmbeddedResource Include="ClipForgeWpf.g.resources" LogicalName="ClipForgeWpf.g.resources" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="OpenCvSharp">
+      <HintPath>lib\OpenCvSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="LibVLCSharp">
+      <HintPath>lib\LibVLCSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="LibVLCSharp.WPF">
+      <HintPath>lib\LibVLCSharp.WPF.dll</HintPath>
+    </Reference>
+    <Reference Include="NAudio.Wasapi">
+      <HintPath>lib\NAudio.Wasapi.dll</HintPath>
+    </Reference>
+    <Reference Include="NAudio.Core">
+      <HintPath>lib\NAudio.Core.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>
