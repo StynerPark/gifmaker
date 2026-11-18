@@ -1,6 +1,6 @@
 # gifmaker
 
-Windows x64에서 동영상이나 화면 녹화로 프레임을 만들고 GIF, WebP, MP4 또는 프레임 ZIP으로 저장하는 프로그램입니다.
+Windows x64에서 동영상이나 화면 녹화로 프레임을 만들고 GIF, WebP 또는 MP4로 저장하는 프로그램입니다.
 
 ## 다운로드와 설치
 
@@ -18,7 +18,7 @@ Windows x64에서 동영상이나 화면 녹화로 프레임을 만들고 GIF, W
 2. 동영상을 탐색하고 **시작점 지정**, **종료점 지정**을 누른 뒤 **+ 프레임 추출**을 누릅니다.
 3. 가운데 **추출한 프레임**에서 프레임을 확인하고, 필요한 경우 지속시간을 바꾸거나 선택 삭제합니다.
 4. 오른쪽 **결과 미리보기**를 확인합니다.
-5. 필요한 편집을 적용한 뒤 **저장**에서 ZIP, GIF, WebP, MP4 중 하나를 선택합니다.
+5. 필요한 편집을 적용한 뒤 **저장**에서 GIF, WebP, MP4 중 하나를 선택합니다.
 
 ## 편집과 출력
 
@@ -30,9 +30,10 @@ Windows x64에서 동영상이나 화면 녹화로 프레임을 만들고 GIF, W
 | 이미지 축소 확대 | 품질 슬라이더 아래의 `50%`, `100%`, `200%`를 누르거나 숫자 칸에 배율을 직접 입력합니다. 기본값은 `100`입니다. 입력값은 10~2000%입니다. 선택한 배율 버튼은 진하게 표시됩니다. 자르기 영역 선택과 별개로 출력 이미지의 픽셀 크기에 적용됩니다. |
 | 워터마크 | **추가**에서 이미지 또는 텍스트 워터마크를 배치하고 **초기화**로 제거합니다. |
 | 재생 순서 | **역방향 / Reverse**는 프레임 순서를 뒤집고, **왕복 / Ping-Pong**은 앞으로 재생한 뒤 거꾸로 재생합니다. 반복 횟수는 별도 설정입니다. |
-| 저장 | **ZIP**은 프레임 묶음, **GIF**와 **WebP**는 애니메이션, **MP4**는 동영상으로 저장합니다. |
+| 저장 | **GIF**와 **WebP**는 애니메이션, **MP4**는 동영상으로 저장합니다. |
+| tmp | 저장 영역 옆의 **tmp → 열기**를 누르면 현재 설치 폴더의 임시 작업 폴더가 열립니다. |
 
-**캐시 비우기**는 임시 작업 파일을 정리합니다. 필요한 프레임은 먼저 저장하세요.
+**캐시 비우기**는 임시 작업 파일을 정리합니다. 정상 종료할 때 현재 작업 세션 폴더도 삭제됩니다. 필요한 프레임은 먼저 저장하세요. 비정상 종료 후 남은 세션은 다음 실행 때 12시간 이상 지난 것부터 정리합니다.
 
 ## 화면 녹화와 색상
 
@@ -47,7 +48,7 @@ Windows x64에서 동영상이나 화면 녹화로 프레임을 만들고 GIF, W
 
 ## English quick guide
 
-Install the [Windows x64 setup](https://github.com/StynerPark/gifmaker/releases/tag/v1.0.0). Drop a video into **Original Video**, set the start/end points, extract frames, edit the frame list, then export ZIP, GIF, WebP, or MP4. **Image scale** offers 50%, 100%, 200%, and a numeric percentage (10–2000%). It changes output pixel dimensions independently of crop. **Reverse** reverses frame order; **Ping-Pong** plays forward then backward. Screen recording falls back to software capture when GPU capture is unavailable.
+Install the [Windows x64 setup](https://github.com/StynerPark/gifmaker/releases/tag/v1.0.0). Drop a video into **Original Video**, set the start/end points, extract frames, edit the frame list, then export GIF, WebP, or MP4. Use **tmp → Open** beside the export buttons to open the temporary work folder. The current session folder is removed on normal exit. **Image scale** offers 50%, 100%, 200%, and a numeric percentage (10–2000%). It changes output pixel dimensions independently of crop. **Reverse** reverses frame order; **Ping-Pong** plays forward then backward. Screen recording falls back to software capture when GPU capture is unavailable.
 
 ## 소스와 빌드
 

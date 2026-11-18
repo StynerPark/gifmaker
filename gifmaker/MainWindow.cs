@@ -212,6 +212,8 @@ public class MainWindow : Window, IComponentConnector
 	internal ToggleButton ReverseToggle;
 
 	internal ToggleButton ReversePlusToggle;
+	private System.Windows.Controls.Button _saveZipButton;
+	private System.Windows.Controls.Button _tmpOpenButton;
 
 	private bool _contentLoaded;
 
@@ -255,6 +257,7 @@ public class MainWindow : Window, IComponentConnector
 		Core.Initialize();
 		UiLanguage.Load();
 		InitializeComponent();
+		InstallTmpControl();
 		InstallScaleControls();
 		UpdatePlaybackLabels();
 		Rect workArea = SystemParameters.WorkArea;
@@ -323,6 +326,74 @@ public class MainWindow : Window, IComponentConnector
 			UpdateResponsiveLayout();
 			RefreshVideoDropGuard();
 		};
+	}
+
+	private void InstallTmpControl()
+	{
+		if (_saveZipButton.Parent is not System.Windows.Controls.Primitives.UniformGrid buttons ||
+			buttons.Parent is not StackPanel saveContent || saveContent.Parent is not Border saveCard ||
+			saveCard.Parent is not Grid parent) return;
+
+		buttons.Children.Remove(_saveZipButton);
+		buttons.Columns = 3;
+		buttons.Rows = 1;
+		var templateButton = (System.Windows.Controls.Button)buttons.Children[0];
+		var saveHeader = (TextBlock)saveContent.Children[0];
+		int row = Grid.GetRow(saveCard);
+		parent.Children.Remove(saveCard);
+
+		var pair = new Grid { Margin = saveCard.Margin };
+		pair.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
+		pair.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+		Grid.SetRow(pair, row);
+		parent.Children.Add(pair);
+		saveCard.Margin = new Thickness(0);
+		pair.Children.Add(saveCard);
+
+		var tmpCard = new Border
+		{
+			Style = saveCard.Style,
+			Background = saveCard.Background,
+			BorderBrush = saveCard.BorderBrush,
+			BorderThickness = saveCard.BorderThickness,
+			CornerRadius = saveCard.CornerRadius,
+			Padding = saveCard.Padding,
+			Margin = new Thickness(7, 0, 0, 0)
+		};
+		Grid.SetColumn(tmpCard, 1);
+		pair.Children.Add(tmpCard);
+		var tmpContent = new StackPanel();
+		tmpCard.Child = tmpContent;
+		tmpContent.Children.Add(new TextBlock
+		{
+			Text = "tmp",
+			Style = saveHeader.Style,
+			FontFamily = saveHeader.FontFamily,
+			FontSize = saveHeader.FontSize,
+			FontWeight = saveHeader.FontWeight,
+			Foreground = saveHeader.Foreground,
+			Margin = saveHeader.Margin
+		});
+		_tmpOpenButton = new System.Windows.Controls.Button
+		{
+			Content = UiLanguage.Korean ? "열기" : "Open",
+			Style = templateButton.Style,
+			Height = templateButton.Height,
+			FontFamily = templateButton.FontFamily,
+			FontSize = templateButton.FontSize,
+			FontWeight = templateButton.FontWeight,
+			Background = templateButton.Background,
+			BorderBrush = templateButton.BorderBrush,
+			BorderThickness = templateButton.BorderThickness,
+			Padding = templateButton.Padding,
+			Margin = buttons.Margin
+		};
+		_tmpOpenButton.Click += delegate
+		{
+			Directory.CreateDirectory(TempBase);
+			System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(TempBase) { UseShellExecute = true });
+		};
+		tmpContent.Children.Add(_tmpOpenButton);
 	}
 
 	private void InstallScaleControls()
@@ -516,6 +587,7 @@ public class MainWindow : Window, IComponentConnector
 		RecordButton.Content = UiLanguage.T(_recording ? "■ Stop" : "● Full Record");
 		UpdatePlaybackLabels();
 		UpdateScaleLabels();
+		if (_tmpOpenButton != null) _tmpOpenButton.Content = UiLanguage.Korean ? "열기" : "Open";
 	}
 
 	private void SetStatus(string text)
@@ -2471,7 +2543,8 @@ public class MainWindow : Window, IComponentConnector
 			ReversePlusToggle.Click += PlaybackMode_Click;
 			break;
 		case 60:
-			((System.Windows.Controls.Button)target).Click += SaveZip_Click;
+			_saveZipButton = (System.Windows.Controls.Button)target;
+			_saveZipButton.Click += SaveZip_Click;
 			break;
 		case 61:
 			((System.Windows.Controls.Button)target).Click += SaveGif_Click;

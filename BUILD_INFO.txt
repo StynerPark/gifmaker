@@ -3,8 +3,8 @@ gifmaker setup package 1.0.0
 This source was reconstructed from the current D:\gif maker program binary and includes the latest changes made here. It is not the original ClipForge development repository.
 
 Requirements: Windows x64, .NET 8 SDK for rebuilding.
-Build: dotnet build gifmaker.csproj -c Release
+Build: .\build-app.ps1
 
-The WPF resource and internal assembly name remain ClipForgeWpf for binary compatibility. The compiled bin\Release\net8.0-windows\ClipForgeWpf.dll is deployed as gifmaker.dll beside the existing gifmaker.exe and its bundled runtime. The Release installer packages the tested D:\gif maker result, including FFmpeg and VLC.
+The WPF resource and internal assembly name remain ClipForgeWpf for binary compatibility. build-app.ps1 produces build\gifmaker.exe and build\gifmaker.dll by rebuilding the application and changing the apphost's managed DLL name. Copy both beside the existing bundled runtime. The Release installer packages the tested D:\gif maker result, including FFmpeg and VLC.
 
 The installer is built with Inno Setup 7 using gifmaker.iss. Prepare a complete portable distribution at dist\gifmaker, or pass /DSourceDir="D:\gif maker" to ISCC on the original build PC. Temporary recording files and the local language preference are excluded.

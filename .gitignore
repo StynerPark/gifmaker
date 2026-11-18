@@ -2,6 +2,7 @@ bin/
 obj/
 publish/
 tmp/
+build/
 *.user
 *.suo
 *.zip
