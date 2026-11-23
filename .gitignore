@@ -3,6 +3,8 @@ obj/
 publish/
 tmp/
 build/
+dist/
+Release/
 *.user
 *.suo
 *.zip

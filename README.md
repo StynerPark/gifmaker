@@ -4,9 +4,9 @@ Windows x64에서 동영상이나 화면 녹화로 프레임을 만들고 GIF, W
 
 ## 다운로드와 설치
 
-최신 버전: [gifmaker v1.0.0](https://github.com/StynerPark/gifmaker/releases/tag/v1.0.0)
+최신 버전: [gifmaker v1.0.1](https://github.com/StynerPark/gifmaker/releases/tag/v1.0.1)
 
-1. 릴리스에서 `gifmaker_v1.0.0_Setup.exe`를 내려받아 실행합니다.
+1. 릴리스에서 `gifmaker_v1.0.1_Setup.exe`를 내려받아 실행합니다. 기존 설치에는 `gifmaker_v1.0.1_patch.exe`를 사용할 수 있습니다.
 2. 설치가 끝나면 시작 메뉴의 **gifmaker**를 실행합니다. 설치 중 바탕 화면 바로 가기도 선택할 수 있습니다.
 3. 설치 파일에는 필요한 .NET 런타임, FFmpeg, VLC 구성 요소가 포함되어 있습니다. 별도 설치는 필요하지 않습니다.
 
@@ -19,6 +19,8 @@ Windows x64에서 동영상이나 화면 녹화로 프레임을 만들고 GIF, W
 3. 가운데 **추출한 프레임**에서 프레임을 확인하고, 필요한 경우 지속시간을 바꾸거나 선택 삭제합니다.
 4. 오른쪽 **결과 미리보기**를 확인합니다.
 5. 필요한 편집을 적용한 뒤 **저장**에서 GIF, WebP, MP4 중 하나를 선택합니다.
+
+원본 영상을 더블클릭하면 전체화면으로 전환됩니다. 전체화면 하단에 마우스를 대면 재생 이동바와 조작 버튼이 나타납니다. `Esc`는 전체화면 종료, `Space`는 재생/일시정지, `←`/`→`는 한 프레임 이동입니다. `[`와 `]`로 시작점과 끝점을 지정할 수 있으며, 전체화면 버튼 줄의 양끝에 지정 시간이 표시됩니다. 기본 화면과 전체화면의 재생 이동바에는 시작점·끝점을 빨간 반쪽 삼각형으로 표시합니다.
 
 ## 편집과 출력
 
@@ -48,7 +50,7 @@ Windows x64에서 동영상이나 화면 녹화로 프레임을 만들고 GIF, W
 
 ## English quick guide
 
-Install the [Windows x64 setup](https://github.com/StynerPark/gifmaker/releases/tag/v1.0.0). Drop a video into **Original Video**, set the start/end points, extract frames, edit the frame list, then export GIF, WebP, or MP4. Use **tmp → Open** beside the export buttons to open the temporary work folder. The current session folder is removed on normal exit. **Image scale** offers 50%, 100%, 200%, and a numeric percentage (10–2000%). It changes output pixel dimensions independently of crop. **Reverse** reverses frame order; **Ping-Pong** plays forward then backward. Screen recording falls back to software capture when GPU capture is unavailable.
+Install the [Windows x64 setup](https://github.com/StynerPark/gifmaker/releases/tag/v1.0.1). Drop a video into **Original Video**, set the start/end points, extract frames, edit the frame list, then export GIF, WebP, or MP4. Use **tmp → Open** beside the export buttons to open the temporary work folder. The current session folder is removed on normal exit. **Image scale** offers 50%, 100%, 200%, and a numeric percentage (10–2000%). It changes output pixel dimensions independently of crop. **Reverse** reverses frame order; **Ping-Pong** plays forward then backward. Screen recording falls back to software capture when GPU capture is unavailable.
 
 ## 소스와 빌드
 

@@ -16,6 +16,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Forms;
 using System.Windows.Input;
 using System.Windows.Markup;
@@ -31,6 +32,59 @@ namespace ClipForgeWpf;
 
 public class MainWindow : Window, IComponentConnector
 {
+	private sealed class SelectionMarksAdorner : Adorner
+	{
+		private readonly Slider _slider;
+		private readonly Func<double> _startValue;
+		private readonly Func<double> _endValue;
+		private readonly Func<double> _durationValue;
+		private static readonly System.Windows.Media.Brush MarkBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(235, 35, 55));
+
+		public SelectionMarksAdorner(Slider slider, Func<double> startValue, Func<double> endValue, Func<double> durationValue) : base(slider)
+		{
+			_slider = slider;
+			_startValue = startValue;
+			_endValue = endValue;
+			_durationValue = durationValue;
+			IsHitTestVisible = false;
+		}
+
+		protected override void OnRender(DrawingContext dc)
+		{
+			base.OnRender(dc);
+			if (_slider.ActualWidth <= 0 || _slider.ActualHeight <= 0) return;
+			double duration = Math.Max(_durationValue(), 0.001);
+			double left = 9;
+			double usable = Math.Max(0, _slider.ActualWidth - 18);
+			if (_slider.Template?.FindName("PART_Track", _slider) is Track track && track.ActualWidth > 0)
+			{
+				try
+				{
+					left = track.TransformToAncestor(_slider).Transform(new System.Windows.Point(0, 0)).X + track.Thumb.ActualWidth / 2;
+					usable = Math.Max(0, track.ActualWidth - track.Thumb.ActualWidth);
+				}
+				catch { }
+			}
+			double startX = left + usable * Math.Clamp(_startValue() / duration, 0, 1);
+			double endX = left + usable * Math.Clamp(_endValue() / duration, 0, 1);
+			double top = 0;
+			double bottom = Math.Min(13, _slider.ActualHeight);
+			void DrawHalf(double x, bool leftHalf)
+			{
+				var shape = new StreamGeometry();
+				using (var context = shape.Open())
+				{
+					context.BeginFigure(new System.Windows.Point(x, top), true, true);
+					context.LineTo(new System.Windows.Point(x + (leftHalf ? -9 : 9), bottom), true, false);
+					context.LineTo(new System.Windows.Point(x, bottom), true, false);
+				}
+				shape.Freeze();
+				dc.DrawGeometry(MarkBrush, null, shape);
+			}
+			DrawHalf(startX, true);
+			DrawHalf(endX, false);
+		}
+	}
 	private enum ExportFormat
 	{
 		Gif,
@@ -105,6 +159,18 @@ public class MainWindow : Window, IComponentConnector
 	private bool _recordVideoMode;
 
 	private bool _sourcePaused = true;
+	private SelectionMarksAdorner? _mainMarks;
+	private SelectionMarksAdorner? _fullscreenMarks;
+	private TextBlock? _fullscreenStartCue;
+	private TextBlock? _fullscreenEndCue;
+	private Window? _fullscreenWindow;
+	private VideoView? _fullscreenVideoView;
+	private LibVLCSharp.Shared.MediaPlayer? _fullscreenPlayer;
+	private Media? _fullscreenMedia;
+	private DispatcherTimer? _fullscreenControlsTimer;
+	private readonly DispatcherTimer _sourceDoubleClickTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(25) };
+	private bool _sourceMouseWasDown;
+	private DateTime _sourceLastClick = DateTime.MinValue;
 
 	private CancellationTokenSource? _extractCancel;
 
@@ -257,6 +323,32 @@ public class MainWindow : Window, IComponentConnector
 		Core.Initialize();
 		UiLanguage.Load();
 		InitializeComponent();
+		Timeline.Loaded += (sender, e) => AttachMarks(Timeline, ref _mainMarks);
+		VideoHost.PreviewMouseLeftButtonDown += (sender, e) =>
+		{
+			if (e.ClickCount == 2 && _videoPath != null) { OpenSourceFullscreen(); e.Handled = true; }
+		};
+		VideoView.PreviewMouseLeftButtonDown += (sender, e) =>
+		{
+			if (e.ClickCount == 2 && _videoPath != null) { OpenSourceFullscreen(); e.Handled = true; }
+		};
+		_sourceDoubleClickTimer.Tick += (sender, e) =>
+		{
+			bool down = System.Windows.Forms.Control.MouseButtons.HasFlag(System.Windows.Forms.MouseButtons.Left);
+			if (down && !_sourceMouseWasDown && _videoPath != null && _fullscreenWindow == null && IsActive && VideoHost.IsVisible)
+			{
+				var cursor = System.Windows.Forms.Cursor.Position;
+				var point = VideoHost.PointFromScreen(new System.Windows.Point(cursor.X, cursor.Y));
+				if (point.X >= 0 && point.Y >= 0 && point.X < VideoHost.ActualWidth && point.Y < VideoHost.ActualHeight)
+				{
+					if ((DateTime.UtcNow - _sourceLastClick).TotalMilliseconds <= System.Windows.Forms.SystemInformation.DoubleClickTime)
+						OpenSourceFullscreen();
+					_sourceLastClick = DateTime.UtcNow;
+				}
+			}
+			_sourceMouseWasDown = down;
+		};
+		_sourceDoubleClickTimer.Start();
 		InstallTmpControl();
 		InstallScaleControls();
 		UpdatePlaybackLabels();
@@ -287,6 +379,8 @@ public class MainWindow : Window, IComponentConnector
 		};
 		base.Closing += delegate
 		{
+			_sourceDoubleClickTimer.Stop();
+			_fullscreenWindow?.Close();
 			_desktopRecording?.Dispose();
 			_desktopRecording = null;
 			try
@@ -316,6 +410,7 @@ public class MainWindow : Window, IComponentConnector
 		base.Loaded += delegate
 		{
 			UpdateResponsiveLayout();
+			AttachMarks(Timeline, ref _mainMarks);
 		};
 		ResponsiveHost.SizeChanged += delegate
 		{
@@ -394,6 +489,23 @@ public class MainWindow : Window, IComponentConnector
 			System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(TempBase) { UseShellExecute = true });
 		};
 		tmpContent.Children.Add(_tmpOpenButton);
+	}
+
+	private void AttachMarks(Slider slider, ref SelectionMarksAdorner? target)
+	{
+		if (target != null) return;
+		var layer = AdornerLayer.GetAdornerLayer(slider);
+		if (layer == null) return;
+		target = new SelectionMarksAdorner(slider, () => _start, () => _end, () => _duration);
+		layer.Add(target);
+	}
+
+	private void UpdateSelectionCues()
+	{
+		if (_fullscreenStartCue != null) _fullscreenStartCue.Text = "[ " + TimeText(_start);
+		if (_fullscreenEndCue != null) _fullscreenEndCue.Text = TimeText(_end) + " ]";
+		_mainMarks?.InvalidateVisual();
+		_fullscreenMarks?.InvalidateVisual();
 	}
 
 	private void InstallScaleControls()
@@ -857,6 +969,7 @@ public class MainWindow : Window, IComponentConnector
 
 	private void StopSourceForNewVideo()
 	{
+		_fullscreenWindow?.Close();
 		_uiTimer.Stop();
 		_previewTimer.Stop();
 		try
@@ -919,6 +1032,7 @@ public class MainWindow : Window, IComponentConnector
 	private void Mute_Click(object sender, RoutedEventArgs e)
 	{
 		_muted = !_muted;
+		if (_fullscreenPlayer != null) _fullscreenPlayer.Mute = _muted;
 		try
 		{
 			_player.Mute = _muted;
@@ -940,11 +1054,228 @@ public class MainWindow : Window, IComponentConnector
 
 	private void Window_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
 	{
+		if (Keyboard.FocusedElement is not System.Windows.Controls.TextBox)
+		{
+			if (e.Key == Key.OemOpenBrackets) { SetStart_Click(sender, e); e.Handled = true; return; }
+			if (e.Key == Key.OemCloseBrackets) { SetEnd_Click(sender, e); e.Handled = true; return; }
+		}
 		if (e.Key == Key.Space && !(Keyboard.FocusedElement is System.Windows.Controls.TextBox))
 		{
 			TogglePlayback();
 			e.Handled = true;
 		}
+	}
+
+	private void OpenSourceFullscreen()
+	{
+		if (_fullscreenWindow != null || _videoPath == null) return;
+		var window = new Window
+		{
+			Title = UiLanguage.Korean ? "원본 영상" : "Source video",
+			WindowStyle = WindowStyle.None,
+			WindowState = WindowState.Maximized,
+			ResizeMode = ResizeMode.NoResize,
+			Background = System.Windows.Media.Brushes.Black,
+			ShowInTaskbar = false,
+			Owner = this
+		};
+		var root = new Grid { Background = System.Windows.Media.Brushes.Black };
+		var view = new VideoView();
+		var fullscreenPlayer = new LibVLCSharp.Shared.MediaPlayer(_libVlc) { Mute = _muted };
+		var fullscreenMedia = new Media(_libVlc, _videoPath, FromType.FromPath);
+		fullscreenPlayer.Media = fullscreenMedia;
+		long initialTime = _player.Time;
+		fullscreenPlayer.Playing += (sender, e) => Dispatcher.BeginInvoke(new Action(() =>
+		{
+			if (_fullscreenPlayer != fullscreenPlayer) return;
+			fullscreenPlayer.Time = initialTime;
+			if (_sourcePaused) fullscreenPlayer.SetPause(pause: true);
+		}));
+		var controls = new Border
+		{
+			Background = new LinearGradientBrush(
+				new GradientStopCollection
+				{
+					new GradientStop(System.Windows.Media.Color.FromArgb(0, 0, 0, 0), 0),
+					new GradientStop(System.Windows.Media.Color.FromArgb(105, 0, 0, 0), 0.55),
+					new GradientStop(System.Windows.Media.Color.FromArgb(170, 0, 0, 0), 1)
+				},
+				new System.Windows.Point(0, 0), new System.Windows.Point(0, 1)),
+			VerticalAlignment = VerticalAlignment.Bottom,
+			Padding = new Thickness(28, 24, 28, 16),
+			Visibility = Visibility.Visible
+		};
+		var ghostButtonStyle = new Style(typeof(System.Windows.Controls.Button));
+		ghostButtonStyle.Setters.Add(new Setter(System.Windows.Controls.Control.ForegroundProperty, System.Windows.Media.Brushes.White));
+		ghostButtonStyle.Setters.Add(new Setter(System.Windows.Controls.Control.BackgroundProperty, System.Windows.Media.Brushes.Transparent));
+		ghostButtonStyle.Setters.Add(new Setter(System.Windows.Controls.Control.BorderThicknessProperty, new Thickness(0)));
+		var buttonTemplate = new ControlTemplate(typeof(System.Windows.Controls.Button));
+		var buttonBorder = new FrameworkElementFactory(typeof(Border));
+		buttonBorder.Name = "HoverBorder";
+		buttonBorder.SetValue(Border.BackgroundProperty, System.Windows.Media.Brushes.Transparent);
+		buttonBorder.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+		var buttonContent = new FrameworkElementFactory(typeof(ContentPresenter));
+		buttonContent.SetValue(FrameworkElement.HorizontalAlignmentProperty, System.Windows.HorizontalAlignment.Center);
+		buttonContent.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		buttonBorder.AppendChild(buttonContent);
+		buttonTemplate.VisualTree = buttonBorder;
+		var hoverTrigger = new Trigger { Property = System.Windows.Controls.Button.IsMouseOverProperty, Value = true };
+		hoverTrigger.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(System.Windows.Media.Color.FromArgb(55, 255, 255, 255)), "HoverBorder"));
+		buttonTemplate.Triggers.Add(hoverTrigger);
+		var pressTrigger = new Trigger { Property = System.Windows.Controls.Button.IsPressedProperty, Value = true };
+		pressTrigger.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(System.Windows.Media.Color.FromArgb(90, 255, 255, 255)), "HoverBorder"));
+		buttonTemplate.Triggers.Add(pressTrigger);
+		ghostButtonStyle.Setters.Add(new Setter(System.Windows.Controls.Control.TemplateProperty, buttonTemplate));
+		var row = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Center };
+		var controlStack = new StackPanel();
+		var timeRow = new Grid { Margin = new Thickness(5, 0, 5, 4) };
+		timeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+		timeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+		timeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+		var startTimeText = new TextBlock { Text = TimeText(0), Foreground = System.Windows.Media.Brushes.White, FontSize = 15, HorizontalAlignment = System.Windows.HorizontalAlignment.Left };
+		var currentTimeText = new TextBlock { Foreground = System.Windows.Media.Brushes.White, FontSize = 15, HorizontalAlignment = System.Windows.HorizontalAlignment.Center };
+		var endTimeText = new TextBlock { Text = TimeText(_duration), Foreground = System.Windows.Media.Brushes.White, FontSize = 15, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
+		Grid.SetColumn(currentTimeText, 1);
+		Grid.SetColumn(endTimeText, 2);
+		timeRow.Children.Add(startTimeText);
+		timeRow.Children.Add(currentTimeText);
+		timeRow.Children.Add(endTimeText);
+		var seekRow = new Grid { Margin = new Thickness(5, 2, 5, 14) };
+		seekRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+		seekRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+		var muteControl = new System.Windows.Controls.Button { Content = _muted ? "🔇" : "🔊", Width = 48, Height = 42, FontSize = 20, Margin = new Thickness(0, 0, 14, 0), Style = ghostButtonStyle };
+		muteControl.Click += (sender, e) => { Mute_Click(sender, e); muteControl.Content = _muted ? "🔇" : "🔊"; };
+		var seekSlider = new Slider { Minimum = 0, Maximum = Math.Max(_duration, 0.001), Value = Math.Clamp(CurrentSeconds, 0, Math.Max(_duration, 0.001)), VerticalAlignment = VerticalAlignment.Center };
+		seekSlider.Loaded += (sender, e) => AttachMarks(seekSlider, ref _fullscreenMarks);
+		Grid.SetColumn(seekSlider, 1);
+		seekRow.Children.Add(muteControl);
+		seekRow.Children.Add(seekSlider);
+		bool updatingSeekSlider = false;
+		seekSlider.ValueChanged += (sender, e) =>
+		{
+			if (updatingSeekSlider || _videoPath == null) return;
+			_player.Time = (long)Math.Round(seekSlider.Value * 1000);
+			if (_fullscreenPlayer != null) _fullscreenPlayer.Time = _player.Time;
+			Timeline.Value = seekSlider.Value;
+			currentTimeText.Text = TimeText(seekSlider.Value);
+		};
+		controlStack.Children.Add(timeRow);
+		controlStack.Children.Add(seekRow);
+		System.Windows.Controls.Button AddControl(string label, Action action)
+		{
+			var button = new System.Windows.Controls.Button { Content = label, MinWidth = 72, Height = 38, Margin = new Thickness(3, 0, 3, 0), FontSize = 15, Style = ghostButtonStyle };
+			button.Click += (sender, e) => action();
+			row.Children.Add(button);
+			return button;
+		}
+		AddControl("-5s", () => SeekBy(-5));
+		_fullscreenStartCue = new TextBlock { Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(235, 35, 55)), FontFamily = new System.Windows.Media.FontFamily("Consolas"), FontSize = 14, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+		row.Children.Insert(0, _fullscreenStartCue);
+		AddControl("-1s", () => SeekBy(-1));
+		AddControl(UiLanguage.Korean ? "이전 프레임" : "Prev frame", () => SeekBy(-1.0 / Math.Max(_fps, 1)));
+		AddControl(UiLanguage.Korean ? "재생/일시정지" : "Play/Pause", TogglePlayback);
+		AddControl(UiLanguage.Korean ? "다음 프레임" : "Next frame", () => SeekBy(1.0 / Math.Max(_fps, 1)));
+		AddControl("+1s", () => SeekBy(1));
+		AddControl("+5s", () => SeekBy(5));
+		_fullscreenEndCue = new TextBlock { Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(235, 35, 55)), FontFamily = new System.Windows.Media.FontFamily("Consolas"), FontSize = 14, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+		row.Children.Add(_fullscreenEndCue);
+		UpdateSelectionCues();
+		controlStack.Children.Add(row);
+		controls.Child = controlStack;
+		root.Children.Add(view);
+		window.Content = root;
+		var overlay = new Window
+		{
+			WindowStyle = WindowStyle.None,
+			AllowsTransparency = true,
+			Background = System.Windows.Media.Brushes.Transparent,
+			ShowInTaskbar = false,
+			ShowActivated = false,
+			Topmost = true,
+			ResizeMode = ResizeMode.NoResize,
+			Content = controls
+		};
+		window.PreviewKeyDown += (sender, e) =>
+		{
+			if (e.Key == Key.Escape) { window.Close(); e.Handled = true; }
+			else if (e.Key == Key.Left) { SeekBy(-1.0 / Math.Max(_fps, 1)); e.Handled = true; }
+			else if (e.Key == Key.Right) { SeekBy(1.0 / Math.Max(_fps, 1)); e.Handled = true; }
+			else if (e.Key == Key.Space) { TogglePlayback(); e.Handled = true; }
+			else if (e.Key == Key.OemOpenBrackets) { SetStart_Click(sender, e); e.Handled = true; }
+			else if (e.Key == Key.OemCloseBrackets) { SetEnd_Click(sender, e); e.Handled = true; }
+		};
+		System.Windows.Interop.ThreadMessageEventHandler nativeKeys = (ref System.Windows.Interop.MSG message, ref bool handled) =>
+		{
+			if (handled || _fullscreenWindow != window || (!window.IsActive && !overlay.IsActive) || message.message != 0x100) return;
+			switch (message.wParam.ToInt32())
+			{
+				case 0x1B: window.Close(); break;
+				case 0x25: SeekBy(-1.0 / Math.Max(_fps, 1)); break;
+				case 0x27: SeekBy(1.0 / Math.Max(_fps, 1)); break;
+				case 0x20: TogglePlayback(); break;
+				case 0xDB: SetStart_Click(window, new RoutedEventArgs()); break;
+				case 0xDD: SetEnd_Click(window, new RoutedEventArgs()); break;
+				default: return;
+			}
+			handled = true;
+		};
+		System.Windows.Interop.ComponentDispatcher.ThreadPreprocessMessage += nativeKeys;
+		window.MouseDoubleClick += (sender, e) => { window.Close(); e.Handled = true; };
+		var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+		timer.Tick += (sender, e) =>
+		{
+			if (!window.IsVisible) return;
+			if (!seekSlider.IsMouseCaptureWithin)
+			{
+				updatingSeekSlider = true;
+				seekSlider.Value = Math.Clamp(CurrentSeconds, 0, seekSlider.Maximum);
+				currentTimeText.Text = TimeText(seekSlider.Value);
+				updatingSeekSlider = false;
+			}
+			var cursor = System.Windows.Forms.Cursor.Position;
+			var topLeft = window.PointToScreen(new System.Windows.Point(0, 0));
+			var bottomRight = window.PointToScreen(new System.Windows.Point(window.ActualWidth, window.ActualHeight));
+			bool nearBottom = cursor.Y >= bottomRight.Y - 175 && cursor.Y <= bottomRight.Y && cursor.X >= topLeft.X && cursor.X <= bottomRight.X;
+			if (nearBottom && !overlay.IsVisible)
+			{
+				overlay.Left = window.Left;
+				overlay.Top = window.Top + window.ActualHeight - 170;
+				overlay.Width = window.ActualWidth;
+				overlay.Height = 170;
+				overlay.Show();
+			}
+			else if (!nearBottom && overlay.IsVisible) overlay.Hide();
+		};
+		window.Closed += (sender, e) =>
+		{
+			System.Windows.Interop.ComponentDispatcher.ThreadPreprocessMessage -= nativeKeys;
+			timer.Stop();
+			overlay.Close();
+			view.MediaPlayer = null;
+			fullscreenPlayer.Stop();
+			fullscreenPlayer.Media = null;
+			fullscreenMedia.Dispose();
+			fullscreenPlayer.Dispose();
+			_fullscreenPlayer = null;
+			_fullscreenMedia = null;
+			_fullscreenControlsTimer = null;
+			_fullscreenVideoView = null;
+			_fullscreenMarks = null;
+			_fullscreenStartCue = null;
+			_fullscreenEndCue = null;
+			_fullscreenWindow = null;
+		};
+		_fullscreenWindow = window;
+		_fullscreenVideoView = view;
+		_fullscreenPlayer = fullscreenPlayer;
+		_fullscreenMedia = fullscreenMedia;
+		_fullscreenControlsTimer = timer;
+		view.MediaPlayer = fullscreenPlayer;
+		window.Show();
+		overlay.Owner = window;
+		window.Focus();
+		fullscreenPlayer.Play();
+		timer.Start();
 	}
 
 	private void TogglePlayback()
@@ -957,6 +1288,7 @@ public class MainWindow : Window, IComponentConnector
 			if (_sourcePaused)
 			{
 				_player.SetPause(pause: true);
+				_fullscreenPlayer?.SetPause(pause: true);
 				_uiTimer.Stop();
 				SyncPositionFromPlayer();
 			}
@@ -964,6 +1296,7 @@ public class MainWindow : Window, IComponentConnector
 			{
 				_player.Mute = _muted;
 				_player.Play();
+				_fullscreenPlayer?.SetPause(pause: false);
 				_uiTimer.Start();
 			}
 		}
@@ -1003,6 +1336,7 @@ public class MainWindow : Window, IComponentConnector
 	{
 		double num = Math.Clamp(Math.Max(Timeline.Value, CurrentSeconds) + delta, 0.0, Math.Max(_duration, 0.0));
 		_player.Time = (long)Math.Round(num * 1000.0);
+		if (_fullscreenPlayer != null) _fullscreenPlayer.Time = _player.Time;
 		_updatingTimeline = true;
 		Timeline.Value = num;
 		_updatingTimeline = false;
@@ -1015,6 +1349,7 @@ public class MainWindow : Window, IComponentConnector
 		{
 			double num = Math.Clamp(Timeline.Value, 0.0, Math.Max(_duration, 0.0));
 			_player.Time = (long)Math.Round(num * 1000.0);
+			if (_fullscreenPlayer != null) _fullscreenPlayer.Time = _player.Time;
 			UpdateTexts();
 		}
 	}
@@ -1047,6 +1382,7 @@ public class MainWindow : Window, IComponentConnector
 		SelectedStartText.Text = TimeText(_start);
 		SelectedEndText.Text = TimeText(_end);
 		SegmentText.Text = UiLanguage.T("Segment: " + TimeText(_start) + " ~ " + TimeText(_end));
+		UpdateSelectionCues();
 	}
 
 	private async void Extract_Click(object sender, RoutedEventArgs e)
@@ -2561,3 +2897,8 @@ public class MainWindow : Window, IComponentConnector
 		}
 	}
 }
+
+
+
+
+

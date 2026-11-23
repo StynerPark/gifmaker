@@ -1,4 +1,4 @@
-gifmaker setup package 1.0.0
+gifmaker setup package 1.0.1
 
 This source was reconstructed from the current D:\gif maker program binary and includes the latest changes made here. It is not the original ClipForge development repository.
 
